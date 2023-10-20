@@ -12,7 +12,7 @@ from scipy.optimize import curve_fit
 from scipy.stats import linregress
 from scipy.stats import pearsonr
 from scipy.stats import skew
-from tqdm.autonotebook import tqdm
+from tqdm.notebook import tqdm
 
 
 def check_inputs(RUN_NAME,
@@ -28,8 +28,8 @@ def check_inputs(RUN_NAME,
                  TIMEPOINTS,
                  MAX_PAM_LENGTH,
                  SPACERS,
-                 P5_SAMPLE_BARCODE_START,
-                 P7_SAMPLE_BARCODE_START,
+                 P5_TIMEPOINT_BARCODE_START,
+                 P7_TIMEPOINT_BARCODE_START,
                  USE_TIMEPOINTS,
                  TOP_N_NORMALIZE,
                  INIT_RATE_EST,
@@ -69,10 +69,10 @@ def check_inputs(RUN_NAME,
 
     if not isinstance(MAX_PAM_LENGTH, int):
         raise Exception('MAX_PAM_LENGTH should be an integer value, you entered: %s' % MAX_PAM_LENGTH)
-    if not isinstance(P5_SAMPLE_BARCODE_START, int):
-        raise Exception('P5_SAMPLE_BARCODE_START should be an integer value, you entered: %s' % P5_SAMPLE_BARCODE_START)
-    if not isinstance(P7_SAMPLE_BARCODE_START, int):
-        raise Exception('P7_SAMPLE_BARCODE_START should be an integer value, you entered: %s' % P7_SAMPLE_BARCODE_START)
+    if not isinstance(P5_TIMEPOINT_BARCODE_START, int):
+        raise Exception('P5_TIMEPOINT_BARCODE_START should be an integer value, you entered: %s' % P5_TIMEPOINT_BARCODE_START)
+    if not isinstance(P7_TIMEPOINT_BARCODE_START, int):
+        raise Exception('P7_TIMEPOINT_BARCODE_START should be an integer value, you entered: %s' % P7_TIMEPOINT_BARCODE_START)
     if not isinstance(PAM_LENGTH, int):
         raise Exception('PAM_LENGTH should be an integer value, you entered: %s' % PAM_LENGTH)
     if not isinstance(PAM_START, int):
@@ -141,8 +141,8 @@ def PAMDA_complete(RUN_NAME,
                    MAX_PAM_LENGTH=8,
                    SPACERS={'SPACER1': 'GGGCACGGGCAGCTTGCCGG',
                             'SPACER2': 'GTCGCCCTCGAACTTCACCT'},
-                   P5_SAMPLE_BARCODE_START=2,
-                   P7_SAMPLE_BARCODE_START=2,
+                   P5_TIMEPOINT_BARCODE_START=2,
+                   P7_TIMEPOINT_BARCODE_START=2,
                    USE_TIMEPOINTS=None,
                    TOP_N_NORMALIZE=5,
                    INIT_RATE_EST=[0.0001, 0.001, 0.01],
@@ -174,8 +174,8 @@ def PAMDA_complete(RUN_NAME,
                  TIMEPOINTS,
                  MAX_PAM_LENGTH,
                  SPACERS,
-                 P5_SAMPLE_BARCODE_START,
-                 P7_SAMPLE_BARCODE_START,
+                 P5_TIMEPOINT_BARCODE_START,
+                 P7_TIMEPOINT_BARCODE_START,
                  USE_TIMEPOINTS,
                  TOP_N_NORMALIZE,
                  INIT_RATE_EST,
@@ -201,8 +201,8 @@ def PAMDA_complete(RUN_NAME,
                 TIMEPOINTS,
                 MAX_PAM_LENGTH,
                 SPACERS,
-                P5_SAMPLE_BARCODE_START,
-                P7_SAMPLE_BARCODE_START)
+                P5_TIMEPOINT_BARCODE_START,
+                P7_TIMEPOINT_BARCODE_START)
     print('FINISHED: generate counts from fastqs \n')
 
     print('BEGIN: convert raw counts to normalized counts')
@@ -257,23 +257,24 @@ def PAMDA_complete(RUN_NAME,
 #-----------------------------------------------------------------------------------------------------------------------------#
 
 def fastq2count(run_name,
-                barcode_csv,
+                timepoint_csv,
                 fastq_dir,
-                timepoint_fastq,
+                sample_fastq,
                 pam_orientation,
-                timepoints=[0, 60, 480, 1920],
                 max_pam_len=8,
                 spacers={'SPACER1': 'GGGCACGGGCAGCTTGCCGG', 'SPACER2': 'GTCGCCCTCGAACTTCACCT'},
-                P5_sample_BC_start=2,
-                P7_sample_BC_start=2):
+                P5_timepoint_BC_start=2,
+                P7_timepoint_BC_start=2):
     """
     generate raw PAM read counts from fastq files
+    Note: We only use P7_timepint_BC, which should be on the same strand as the provided spacer! 
+
     """
     # check inputs
     try:
-        variant_ids = pd.read_csv(barcode_csv)
+        timepoint_ids = pd.read_csv(timepoint_csv)
     except:
-        raise Exception('BARCODE_CSV "%s" not found' % barcode_csv)
+        raise Exception('BARCODE_CSV "%s" not found' % timepoint_csv)
 
     fastqs = glob.glob(fastq_dir + '/**/*R1*.fastq.gz', recursive=True)
     if len(fastqs) == 0:
@@ -282,25 +283,24 @@ def fastq2count(run_name,
     if pam_orientation not in ['three_prime', 'five_prime']:
         raise Exception("please enter 'three_prime' or 'five_prime' for PAM_ORIENTATION")
 
-    P5_sample_BCs = variant_ids['P5_sample_barcode'].tolist()
-    P5_sample_BC_len = len(P5_sample_BCs[0])
-    P7_sample_BCs = variant_ids['P7_sample_barcode'].tolist()
-    P7_sample_BC_len = len(P5_sample_BCs[0])
-
+    P5_timepoint_BCs = timepoint_ids['P5_timepoint_barcode'].tolist()
+    P5_timepoint_BC_len = len(P5_timepoint_BCs[0])
+    P7_timepoint_BCs = timepoint_ids['P7_timepoint_barcode'].tolist()
+    P7_timepoint_BC_len = len(P5_timepoint_BCs[0])
     nt_complement = dict({'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'N': 'N', '_': '_', '-': '-'})
 
     nucleotides = ['A', 'T', 'C', 'G']
     total_pam_space = [''.join(p) for p in itertools.product(nucleotides, repeat=max_pam_len)]
 
-    variant_dict = {}
-    for index, row in variant_ids.iterrows():
-        variant_dict[str(row['P5_sample_barcode']) + '_' + str(row['P7_sample_barcode'])] = row['sample']
-
+    timepoint_dict = {}
+    for index, row in timepoint_ids.iterrows():
+        timepoint_dict[row['P7_timepoint_barcode']] = row['timepoint']
+    num_timepoints = len(timepoint_dict)
     store_all_data = {}
     norm_counts_scale = {}
 
-    for sample in variant_ids['sample']:
-        store_all_data[sample] = {spacer: {x: [0] * (len(timepoints) - 1) for x in total_pam_space}
+    for sample in sample_fastq.values():
+        store_all_data[sample] = {spacer: {x: [0] * num_timepoints for x in total_pam_space}
                                   for spacer in spacers}
 
     pbar1 = tqdm(desc='fastq files: ', total=len(fastqs))
@@ -314,8 +314,9 @@ def fastq2count(run_name,
         fastq_name = fastq_name.split('_L00')[0]
 
         try:
-            timepoint = timepoint_fastq[fastq_name]
+            sample = sample_fastq[fastq_name]
         except:
+            print(f'Ignoreing {fastq_name}, sample unknown')
             continue
 
         if fastqR1.endswith('.gz'):
@@ -333,7 +334,6 @@ def fastq2count(run_name,
         level2 = 0
         level1rc = 0
         level2rc = 0
-
         while infileR1.readline() and infileR2.readline():
             read_sequenceR1 = infileR1.readline().strip()
             infileR1.readline()
@@ -343,31 +343,31 @@ def fastq2count(run_name,
             infileR2.readline()
 
             total_reads += 1
-
-            top_read, bot_read, spacer, spacer_loc, P5_sample_BC, P7_sample_BC = \
+            
+            top_read, bot_read, spacer, spacer_loc, P5_timepoints_BC, P7_timepoint_BC = \
                 find_BCs_and_spacer(spacers, read_sequenceR1, read_sequenceR2,
-                                    P5_sample_BC_start, P5_sample_BC_len,
-                                    P7_sample_BC_start, P7_sample_BC_len)
+                                    P5_timepoint_BC_start, P5_timepoint_BC_len,
+                                    P7_timepoint_BC_start, P7_timepoint_BC_len)
 
             if spacer_loc == -1:
                 wrong_spacer += 1
                 continue
 
-            if P5_sample_BC in P5_sample_BCs and P7_sample_BC in P7_sample_BCs:
-                barcode_pair = P5_sample_BC + '_' + P7_sample_BC
-                if barcode_pair in variant_dict.keys():
+            if P7_timepoint_BC in P7_timepoint_BCs:
+                barcode_pair =  P7_timepoint_BC
+                if barcode_pair in timepoint_dict.keys():
                     if pam_orientation == 'three_prime':
                         spacer3p = spacer_loc + len(spacers[spacer])
                         PAM = top_read[spacer3p: spacer3p + max_pam_len]
                         try:
-                            store_all_data[variant_dict[barcode_pair]][spacer][PAM][timepoint] += 1
+                            store_all_data[sample][spacer][PAM][timepoint_dict[barcode_pair]] += 1
                             counted_reads += 1
                         except:
                             pass
                     elif pam_orientation == 'five_prime':
                         PAM = top_read[spacer_loc - max_pam_len: spacer_loc]
                         try:
-                            store_all_data[variant_dict[barcode_pair]][spacer][PAM][timepoint] += 1
+                            store_all_data[sample][spacer][PAM][timepoint_dict[barcode_pair]] += 1
                             counted_reads += 1
                         except:
                             pass
@@ -387,7 +387,7 @@ def fastq2count(run_name,
     pbar2.close()
 
     # output raw count results as a csv
-
+    print(f'Total Reads: {total_reads}, Wrong Spacer: {wrong_spacer}, Wrong Barcode: {wrong_barcode}')
     print('writing compressed CSV output')
 
     if not os.path.exists('output/%s' % run_name):
@@ -396,7 +396,7 @@ def fastq2count(run_name,
     with gzip.open('output/%s/PAMDA_1_raw_counts.csv.gz' % (run_name), mode='wb') as f_out:
         f_out.write((','.join(map(str, ['Sample', 'Spacer', 'PAM'] +
                                   ['Raw_Counts_' + str(x)
-                                   for x in range(1, len(timepoints))])) + '\n').encode('utf-8'))
+                                   for x in range(1, num_timepoints+1)])) + '\n').encode('utf-8'))
         for fastq in store_all_data:
             for spacer in store_all_data[fastq]:
                 for pam in store_all_data[fastq][spacer]:
@@ -1050,7 +1050,7 @@ def raw_count_summary(run_name, input_csv=None):
                      run_name)
 
 def library_QC(RUN_NAME, 
-                CONTROL_BARCODE_CSV,
+                TIMEPOINT_CSV,
                 CONTROL_FASTQ_DIR,
                 CONTROL_FASTQ,
                 PAM_ORIENTATION,
@@ -1058,13 +1058,13 @@ def library_QC(RUN_NAME,
                 PAM_START,
                 MAX_PAM_LENGTH = 8, 
                 SPACERS = {'SPACER1':'GGGCACGGGCAGCTTGCCGG', 'SPACER2':'GTCGCCCTCGAACTTCACCT'},
-                P5_SAMPLE_BARCODE_START = 2,
-                P7_SAMPLE_BARCODE_START = 2):
+                P5_TIMEPIONT_BARCODE_START = 2,
+                P7_TIMEPOINT_BARCODE_START = 2):
     
     print('Begin library QC')
 
     library_QC_check_inputs(RUN_NAME, 
-                            CONTROL_BARCODE_CSV,
+                            TIMEPOINT_CSV,
                             CONTROL_FASTQ_DIR,
                             CONTROL_FASTQ,
                             PAM_ORIENTATION,
@@ -1072,11 +1072,11 @@ def library_QC(RUN_NAME,
                             PAM_START,
                             MAX_PAM_LENGTH, 
                             SPACERS,
-                            P5_SAMPLE_BARCODE_START,
-                            P7_SAMPLE_BARCODE_START)
+                            P5_TIMEPIONT_BARCODE_START,
+                            P7_TIMEPOINT_BARCODE_START)
     
     control_fastq2count(RUN_NAME, 
-                        CONTROL_BARCODE_CSV,
+                        TIMEPOINT_CSV,
                         CONTROL_FASTQ_DIR,
                         CONTROL_FASTQ,
                         PAM_ORIENTATION,
@@ -1084,8 +1084,8 @@ def library_QC(RUN_NAME,
                         PAM_START,
                         MAX_PAM_LENGTH, 
                         SPACERS,
-                        P5_SAMPLE_BARCODE_START,
-                        P7_SAMPLE_BARCODE_START)
+                        P5_TIMEPIONT_BARCODE_START,
+                        P7_TIMEPOINT_BARCODE_START)
     
     rawcount2PAMcount(RUN_NAME,
                       PAM_ORIENTATION,
@@ -1097,7 +1097,7 @@ def library_QC(RUN_NAME,
 
 
 def library_QC_check_inputs(RUN_NAME,
-                           CONTROL_BARCODE_CSV,
+                           CONTROL_TIMEPOINT_CSV,
                            CONTROL_FASTQ_DIR,
                            CONTROL_FASTQ,
                            PAM_ORIENTATION,
@@ -1105,13 +1105,13 @@ def library_QC_check_inputs(RUN_NAME,
                            PAM_START,
                            MAX_PAM_LENGTH, 
                            SPACERS,
-                           P5_SAMPLE_BARCODE_START,
-                           P7_SAMPLE_BARCODE_START):
+                           P5_TIMEPOINT_BARCODE_START,
+                           P7_TIMEPOINT_BARCODE_START):
     """
     perform some checks for input parameters
     """
-    if not os.path.exists(CONTROL_BARCODE_CSV):
-        raise Exception('CONTROL_BARCODE_CSV "%s" not found' % CONTROL_BARCODE_CSV)
+    if not os.path.exists(CONTROL_TIMEPOINT_CSV):
+        raise Exception('CONTROL_TIMEPOINT_CSV "%s" not found' % CONTROL_TIMEPOINT_CSV)
     if not os.path.exists(CONTROL_FASTQ_DIR):
         raise Exception('CONTROL_FASTQ_DIR "%s" not found' % CONTROL_FASTQ_DIR)
     fastqs = glob.glob(CONTROL_FASTQ_DIR +'/**/*R1*.fastq.gz', recursive = True)
@@ -1130,10 +1130,10 @@ def library_QC_check_inputs(RUN_NAME,
         raise Exception('CONTROL_FASTQ %s not found' % CONTROL_FASTQ)
     if not isinstance(MAX_PAM_LENGTH,int):
         raise Exception('MAX_PAM_LENGTH should be an integer value, you entered: %s' % MAX_PAM_LENGTH)
-    if not isinstance(P5_SAMPLE_BARCODE_START,int):
-        raise Exception('P5_SAMPLE_BARCODE_START should be an integer value, you entered: %s' % P5_SAMPLE_BARCODE_START)
-    if not isinstance(P7_SAMPLE_BARCODE_START,int):
-        raise Exception('P7_SAMPLE_BARCODE_START should be an integer value, you entered: %s' % P7_SAMPLE_BARCODE_START)
+    if not isinstance(P5_TIMEPOINT_BARCODE_START,int):
+        raise Exception('P5_TIMEPOINT_BARCODE_START should be an integer value, you entered: %s' % P5_TIMEPOINT_BARCODE_START)
+    if not isinstance(P7_TIMEPOINT_BARCODE_START,int):
+        raise Exception('P7_TIMEPOINT_BARCODE_START should be an integer value, you entered: %s' % P7_TIMEPOINT_BARCODE_START)
     if not isinstance(PAM_LENGTH,int):
         raise Exception('PAM_LENGTH should be an integer value, you entered: %s' % PAM_LENGTH)
     if not isinstance(PAM_START,int):
@@ -1150,7 +1150,7 @@ def library_QC_check_inputs(RUN_NAME,
 
 
 def control_fastq2count(run_name, 
-                        barcode_csv,
+                        timepoint_csv,
                         fastq_dir,
                         control_fastq,
                         pam_orientation,
@@ -1162,22 +1162,20 @@ def control_fastq2count(run_name,
                         P7_sample_BC_start = 2):
     """
     generate raw read counts from a fastq file containing control reads
-    just runs fastq2count with a single timepoint_fastq and a single timepoint
+    just runs fastq2count with a single sample and a single timepoint
     """
     
-    timepoint_fastq = {control_fastq:0}
-    timepoints = [0,1]
+    sample_fastq = {control_fastq: control_fastq}
     
     fastq2count(run_name, 
-                barcode_csv,
+                timepoint_csv,
                 fastq_dir,
-                timepoint_fastq, 
+                sample_fastq, 
                 pam_orientation, 
-                timepoints = timepoints,
                 max_pam_len = max_pam_len, 
                 spacers = spacers,
-                P5_sample_BC_start = P5_sample_BC_start,
-                P7_sample_BC_start = P7_sample_BC_start)
+                P5_timepoint_BC_start = P5_sample_BC_start,
+                P7_timepoint_BC_start = P7_sample_BC_start)
 
 def rawcount2PAMcount(run_name,
                       pam_orientation,
