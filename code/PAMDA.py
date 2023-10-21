@@ -16,15 +16,15 @@ from tqdm.notebook import tqdm
 
 
 def check_inputs(RUN_NAME,
-                 BARCODE_CSV,
+                 TIMEPOINT_CSV,
                  FASTQ_DIR,
-                 TIMEPOINT_FASTQ,
+                 SAMPLE_FASTQ,
                  PAM_ORIENTATION,
                  PAM_LENGTH,
                  PAM_START,
                  CONTROL_RAW_COUNT_CSV,
                  CONTROL_SAMPLE,
-                 CONTROL_SAMPLE_TIMEPOINT_FASTQ,
+                 CONTROL_SAMPLE_SAMPLE_FASTQ,
                  TIMEPOINTS,
                  MAX_PAM_LENGTH,
                  SPACERS,
@@ -46,8 +46,8 @@ def check_inputs(RUN_NAME,
     """
     perform some checks for input parameters
     """
-    if not os.path.exists(BARCODE_CSV):
-        raise Exception('BARCODE_CSV "%s" not found' % BARCODE_CSV)
+    if not os.path.exists(TIMEPOINT_CSV):
+        raise Exception('TIMEPOINT_CSV "%s" not found' % TIMEPOINT_CSV)
     if not os.path.exists(FASTQ_DIR):
         raise Exception('fastq directory "%s" not found' % FASTQ_DIR)
     if CONTROL_RAW_COUNT_CSV != None:
@@ -63,9 +63,9 @@ def check_inputs(RUN_NAME,
         fastq_name = fastqR1.split('/')[-1]
         fastq_name = fastq_name.split('_L00')[0]
         try:
-            TIMEPOINT_FASTQ[fastq_name]
+            SAMPLE_FASTQ[fastq_name]
         except:
-            warnings.warn('%s not found in TIMEPOINT_FASTQ. This fastq will be ignored.' % fastq_name)
+            warnings.warn('%s not found in SAMPLE_FASTQ. This fastq will be ignored.' % fastq_name)
 
     if not isinstance(MAX_PAM_LENGTH, int):
         raise Exception('MAX_PAM_LENGTH should be an integer value, you entered: %s' % MAX_PAM_LENGTH)
@@ -77,11 +77,11 @@ def check_inputs(RUN_NAME,
         raise Exception('PAM_LENGTH should be an integer value, you entered: %s' % PAM_LENGTH)
     if not isinstance(PAM_START, int):
         raise Exception('PAM_START should be an integer value, you entered: %s' % PAM_START)
-    if (CONTROL_RAW_COUNT_CSV == None) and (CONTROL_SAMPLE_TIMEPOINT_FASTQ == None):
-        raise Exception('Either CONTROL_RAW_COUNT_CSV or CONTROL_SAMPLE_TIMEPOINT_FASTQ must be specified')
-    if not (isinstance(CONTROL_SAMPLE_TIMEPOINT_FASTQ, int) or (CONTROL_SAMPLE_TIMEPOINT_FASTQ == None)):
+    if (CONTROL_RAW_COUNT_CSV == None) and (CONTROL_SAMPLE_SAMPLE_FASTQ == None):
+        raise Exception('Either CONTROL_RAW_COUNT_CSV or CONTROL_SAMPLE_SAMPLE_FASTQ must be specified')
+    if not (isinstance(CONTROL_SAMPLE_SAMPLE_FASTQ, int) or (CONTROL_SAMPLE_SAMPLE_FASTQ == None)):
         raise Exception(
-            'CONTROL_SAMPLE_TIMEPOINT_FASTQ should be "None" or an integer value, you entered: %s' % CONTROL_SAMPLE_TIMEPOINT_FASTQ)
+            'CONTROL_SAMPLE_SAMPLE_FASTQ should be "None" or an integer value, you entered: %s' % CONTROL_SAMPLE_SAMPLE_FASTQ)
     if not isinstance(TOP_N_NORMALIZE, int):
         raise Exception('TOP_N_NORMALIZE should be an integer value, you entered: %s' % TOP_N_NORMALIZE)
     if not isinstance(READ_SUM_MIN, int):
@@ -128,16 +128,16 @@ def check_inputs(RUN_NAME,
 #-----------------------------------------------------------------------------------------------------------------------------#
 
 def PAMDA_complete(RUN_NAME,
-                   BARCODE_CSV,
+                   TIMEPOINT_CSV,
                    FASTQ_DIR,
-                   TIMEPOINT_FASTQ,
+                   SAMPLE_FASTQ,
                    PAM_ORIENTATION,
                    PAM_LENGTH,
                    PAM_START,
                    CONTROL_RAW_COUNT_CSV,
                    CONTROL_SAMPLE,
-                   CONTROL_SAMPLE_TIMEPOINT_FASTQ=None,
-                   TIMEPOINTS=[0, 60, 480, 1920],
+                   CONTROL_SAMPLE_SAMPLE_FASTQ=None,
+                   TIMEPOINTS=[],
                    MAX_PAM_LENGTH=8,
                    SPACERS={'SPACER1': 'GGGCACGGGCAGCTTGCCGG',
                             'SPACER2': 'GTCGCCCTCGAACTTCACCT'},
@@ -159,18 +159,17 @@ def PAMDA_complete(RUN_NAME,
     """
     Runs the complete PAMDA analysis from fastq files to heat map visualization.
     """
-
     # perform some checks
     check_inputs(RUN_NAME,
-                 BARCODE_CSV,
+                 TIMEPOINT_CSV,
                  FASTQ_DIR,
-                 TIMEPOINT_FASTQ,
+                 SAMPLE_FASTQ,
                  PAM_ORIENTATION,
                  PAM_LENGTH,
                  PAM_START,
                  CONTROL_RAW_COUNT_CSV,
                  CONTROL_SAMPLE,
-                 CONTROL_SAMPLE_TIMEPOINT_FASTQ,
+                 CONTROL_SAMPLE_SAMPLE_FASTQ,
                  TIMEPOINTS,
                  MAX_PAM_LENGTH,
                  SPACERS,
@@ -194,9 +193,9 @@ def PAMDA_complete(RUN_NAME,
 
     print('BEGIN: generate counts from fastqs')
     fastq2count(RUN_NAME,
-                BARCODE_CSV,
+                TIMEPOINT_CSV,
                 FASTQ_DIR,
-                TIMEPOINT_FASTQ,
+                SAMPLE_FASTQ,
                 PAM_ORIENTATION,
                 TIMEPOINTS,
                 MAX_PAM_LENGTH,
@@ -209,7 +208,7 @@ def PAMDA_complete(RUN_NAME,
     rawcount2normcount(RUN_NAME,
                        CONTROL_RAW_COUNT_CSV,
                        CONTROL_SAMPLE,
-                       CONTROL_SAMPLE_TIMEPOINT_FASTQ,
+                       CONTROL_SAMPLE_SAMPLE_FASTQ,
                        PAM_ORIENTATION,
                        PAM_LENGTH,
                        PAM_START,
@@ -232,7 +231,7 @@ def PAMDA_complete(RUN_NAME,
 
     print('BEGIN: plot heat maps')
     rate2heatmap(RUN_NAME,
-                 BARCODE_CSV,
+                 TIMEPOINT_CSV,
                  PAM_LENGTH,
                  PAM_START,
                  PAM1_NT_RANK,
@@ -261,6 +260,7 @@ def fastq2count(run_name,
                 fastq_dir,
                 sample_fastq,
                 pam_orientation,
+                timepoints,
                 max_pam_len=8,
                 spacers={'SPACER1': 'GGGCACGGGCAGCTTGCCGG', 'SPACER2': 'GTCGCCCTCGAACTTCACCT'},
                 P5_timepoint_BC_start=2,
@@ -274,8 +274,7 @@ def fastq2count(run_name,
     try:
         timepoint_ids = pd.read_csv(timepoint_csv)
     except:
-        raise Exception('BARCODE_CSV "%s" not found' % timepoint_csv)
-
+        raise Exception('TIMEPOINT_CSV "%s" not found' % timepoint_csv)
     fastqs = glob.glob(fastq_dir + '/**/*R1*.fastq.gz', recursive=True)
     if len(fastqs) == 0:
         raise Exception('no fastq files found')
@@ -295,12 +294,12 @@ def fastq2count(run_name,
     timepoint_dict = {}
     for index, row in timepoint_ids.iterrows():
         timepoint_dict[row['P7_timepoint_barcode']] = row['timepoint']
-    num_timepoints = len(timepoint_dict)
+    print(timepoint_dict)
     store_all_data = {}
     norm_counts_scale = {}
 
-    for sample in sample_fastq.values():
-        store_all_data[sample] = {spacer: {x: [0] * num_timepoints for x in total_pam_space}
+    for sample in set(sample_fastq.values()):
+        store_all_data[sample] = {spacer: {x: [0] * (len(timepoints)-1) for x in total_pam_space}
                                   for spacer in spacers}
 
     pbar1 = tqdm(desc='fastq files: ', total=len(fastqs))
@@ -352,7 +351,7 @@ def fastq2count(run_name,
             if spacer_loc == -1:
                 wrong_spacer += 1
                 continue
-
+            unknown_tp = 0
             if P7_timepoint_BC in P7_timepoint_BCs:
                 barcode_pair =  P7_timepoint_BC
                 if barcode_pair in timepoint_dict.keys():
@@ -360,17 +359,23 @@ def fastq2count(run_name,
                         spacer3p = spacer_loc + len(spacers[spacer])
                         PAM = top_read[spacer3p: spacer3p + max_pam_len]
                         try:
-                            store_all_data[sample][spacer][PAM][timepoint_dict[barcode_pair]] += 1
+                            tp = timepoint_dict[barcode_pair]
+                            store_all_data[sample][spacer][PAM][tp] += 1
                             counted_reads += 1
                         except:
-                            pass
+                            unknown_tp += 1  
                     elif pam_orientation == 'five_prime':
                         PAM = top_read[spacer_loc - max_pam_len: spacer_loc]
                         try:
-                            store_all_data[sample][spacer][PAM][timepoint_dict[barcode_pair]] += 1
+                            tp = timepoint_dict[barcode_pair]
+                            store_all_data[sample][spacer][PAM][tp] += 1
                             counted_reads += 1
                         except:
-                            pass
+                            unknown_tp += 1 
+                    else:
+                        raise ValueError('Uknown PAM orientation')
+                else:
+                    wrong_barcode += 1
             else:
                 wrong_barcode += 1
 
@@ -387,21 +392,21 @@ def fastq2count(run_name,
     pbar2.close()
 
     # output raw count results as a csv
-    print(f'Total Reads: {total_reads}, Wrong Spacer: {wrong_spacer}, Wrong Barcode: {wrong_barcode}')
+    print(f'Total Reads: {total_reads}, Wrong Spacer: {wrong_spacer}, Wrong Barcode: {wrong_barcode}, Unknown Timeppoint: {unknown_tp}')
     print('writing compressed CSV output')
 
     if not os.path.exists('output/%s' % run_name):
         os.makedirs('output/%s' % run_name)
 
-    with gzip.open('output/%s/PAMDA_1_raw_counts.csv.gz' % (run_name), mode='wb') as f_out:
+    with open('output/%s/PAMDA_1_raw_counts.csv' % (run_name), mode='w') as f_out:
         f_out.write((','.join(map(str, ['Sample', 'Spacer', 'PAM'] +
                                   ['Raw_Counts_' + str(x)
-                                   for x in range(1, num_timepoints+1)])) + '\n').encode('utf-8'))
+                                   for x in range(1, len(timepoints))])) + '\n'))
         for fastq in store_all_data:
             for spacer in store_all_data[fastq]:
                 for pam in store_all_data[fastq][spacer]:
                     total_info = [fastq, spacer, pam] + store_all_data[fastq][spacer][pam]
-                    f_out.write((','.join(map(str, total_info)) + '\n').encode('utf-8'))
+                    f_out.write((','.join(map(str, total_info)) + '\n'))
 
     # also output summary csv file
     print('summarizing raw read counts')
@@ -412,7 +417,7 @@ def fastq2count(run_name,
 def rawcount2normcount(run_name,
                        control_rawcount_csv,
                        control_sample,
-                       control_sample_timepoint_fastq,
+                       control_sample_SAMPLE_FASTQ,
                        pam_orientation,
                        pam_length,
                        pam_start,
@@ -430,14 +435,15 @@ def rawcount2normcount(run_name,
     total_pam_space = [''.join(p) for p in itertools.product(nucleotides, repeat=pam_length)]
 
     if input_csv is None:
-        df_input = pd.read_csv('output/%s/PAMDA_1_raw_counts.csv.gz' % (run_name))
+        df_input = pd.read_csv('output/%s/PAMDA_1_raw_counts.csv' % (run_name))
     else:
         df_input = pd.read_csv(input_csv)
 
     if control_rawcount_csv is not None:
         df_control = pd.read_csv(control_rawcount_csv)
+        print(df_control.Sample.unique())
         df_input = pd.concat([df_input, df_control], sort=False)
-        control_sample_timepoint_fastq = 1
+        control_sample_SAMPLE_FASTQ = 1
 
     # generate counts for the PAMs defined by indicated start position and PAM length
     print('grouping counts by indicated PAM bases')
@@ -476,6 +482,8 @@ def rawcount2normcount(run_name,
 
     # determine t0 read counts for control sample
 
+    print('Control Sample', control_sample)
+    print(df.Sample.unique())
     control_dict = {}
     for spacer in spacers:
         control_dict[spacer] = {}
@@ -485,15 +493,16 @@ def rawcount2normcount(run_name,
     for index, row in df.iterrows():
         if row['Sample'] == control_sample:
             control_dict[row['Spacer']][row['PAM']] = row['Norm_Counts_' +
-                                                          str(control_sample_timepoint_fastq)]
+                                                          str(control_sample_SAMPLE_FASTQ)]
 
     norm_counts_0 = []
     for index, row in df.iterrows():
         norm_counts_0.append(control_dict[row['Spacer']][row['PAM']])
     df['Norm_Counts_0'] = norm_counts_0
+    print(df['Norm_Counts_0'])
     # drop control sample
     df = df[df['Sample'] != control_sample]
-
+    print(df)
     # determing top n enriched PAMs per sample
     print('determining most enriched PAMs per sample')
     pbar = tqdm(desc='samples: ', total=df['Sample'].nunique(),
@@ -514,17 +523,17 @@ def rawcount2normcount(run_name,
             uptrends[sample_spacer] = [[slope[0], y]]
         sample_last = sample_current
     pbar.close()
-
     # determine correction for enrichment based on top n enriched PAMs per sample
 
-    uptrend_corrections = {}
+    uptrend_corrections = {} # contains normalized reads of top n enriched PAMs per sample
     for u in uptrends:
         uptrends[u] = sorted(uptrends[u])
         top_n_entries = [x[1] for x in uptrends[u][-top_n:]]
         top_n_entries_reformat = map(list, zip(*top_n_entries))
         top_n_entries_median = [np.median(x) for x in top_n_entries_reformat]
         uptrend_corrections[u] = top_n_entries_median
-
+    
+    print(uptrend_corrections)
     # calculate normalized read counts
     # correct for enrichment
     # normalize relative to t0 abundance
@@ -544,7 +553,7 @@ def rawcount2normcount(run_name,
             df.loc[index, 'Norm_Counts_' + str(i)] = row['Norm_Counts_' + str(i)] / \
                                                      uptrend_corrections[sample_spacer][i]
             df.loc[index, 'Norm_Counts_' + str(i)] = row['Norm_Counts_' + str(i)] / \
-                                                     row['Norm_Counts_0']
+                                                     row['Norm_Counts_0'] if row['Norm_Counts_0'] != 0 else 0   
         sample_last = sample_current
     pbar.close()
 
@@ -658,7 +667,7 @@ def normcount2rate(run_name,
 #-----------------------------------------------------------------------------------------------------------------------------#
 
 def rate2heatmap(run_name,
-                 barcode_csv,
+                 TIMEPOINT_CSV,
                  pam_length,
                  pam_start,
                  pam1_nucleotide_rank={1: 'A', 2: 'C', 3: 'G', 4: 'T'},
@@ -681,11 +690,11 @@ def rate2heatmap(run_name,
 
     plt.switch_backend('agg')
 
-    variant_ids = pd.read_csv(barcode_csv)  # sample barcode file input
-    variants = variant_ids['sample'].tolist()
-    variant_name_dict = {}
-    for index, row in variant_ids.iterrows():
-        variant_name_dict[row['sample']] = row['description']
+    timepoint_ids = pd.read_csv(TIMEPOINT_CSV)  # sample barcode file input
+    #timepoints = timepoint_ids['timepoint'].tolist()
+    # timepoint_name_dict = {}
+    # for index, row in timepoint_ids.iterrows():
+    #     timepoint_name_dict[row['timepoint']] = row['description']
 
     if not os.path.exists('figures/%s/PAM_start_%s_length_%s' % (run_name, pam_start, pam_length)):
         os.makedirs('figures/%s/PAM_start_%s_length_%s' % (run_name, pam_start, pam_length))
@@ -751,15 +760,15 @@ def rate2heatmap(run_name,
         save heatmaps
         """
         if avg_spacer:
-            plt.savefig('figures/%s/PAM_start_%s_length_%s/PAMDA_HEATMAP_%s_%s.pdf' %
-                        (run_name, pam_start, pam_length, variant, variant_name_dict[variant]))
-            df_output.to_csv('figures/%s/PAM_start_%s_length_%s/PAMDA_HEATMAP_%s_%s.csv' %
-                             (run_name, pam_start, pam_length, variant, variant_name_dict[variant]))
+            plt.savefig('figures/%s/PAM_start_%s_length_%s/PAMDA_HEATMAP_%s.pdf' %
+                        (run_name, pam_start, pam_length, variant))
+            df_output.to_csv('figures/%s/PAM_start_%s_length_%s/PAMDA_HEATMAP_%s.csv' %
+                             (run_name, pam_start, pam_length, variant))
         else:
-            plt.savefig('figures/%s/PAM_start_%s_length_%s/PAMDA_HEATMAP_%s_%s_%s.pdf' %
-                        (run_name, pam_start, pam_length, variant, variant_name_dict[variant], spacer))
-            df_output.to_csv('figures/%s/PAM_start_%s_length_%s/PAMDA_HEATMAP_%s_%s_%s.csv' %
-                             (run_name, pam_start, pam_length, variant, variant_name_dict[variant], spacer))
+            plt.savefig('figures/%s/PAM_start_%s_length_%s/PAMDA_HEATMAP_%s_%s.pdf' %
+                        (run_name, pam_start, pam_length, variant, spacer))
+            df_output.to_csv('figures/%s/PAM_start_%s_length_%s/PAMDA_HEATMAP_%s_%s.csv' %
+                             (run_name, pam_start, pam_length, variant, spacer))
 
     def plot_default_heatmap(df_output, avg_spacer, spacer=None):
         """
@@ -775,7 +784,7 @@ def rate2heatmap(run_name,
         # generate heatmaps and save
         sns.set(font_scale=1)
         fig, ax = plt.subplots()
-        plt.title(variant + '(' + variant_name_dict[variant] + ')', y=1)
+        plt.title(variant + '(' + sample + ')', y=1)
         ax = sns.heatmap(df_output,
                          vmin=heatmap_min,
                          vmax=heatmap_max,
@@ -882,7 +891,7 @@ def rate2heatmap(run_name,
         plt.ylim(ymin=0)
         plt.tight_layout()
         plt.savefig('figures/%s/PAM_start_%s_length_%s/PAMDA_spacer_correlation_%s_%s.pdf' %
-                    (run_name, pam_start, pam_length, variant, variant_name_dict[variant]))
+                    (run_name, pam_start, pam_length, variant, sample))
         plt.close()
 
     # loop through variants and make heatmaps
@@ -1037,7 +1046,7 @@ def raw_count_summary(run_name, input_csv=None):
     just sum across all PAMs for each sample and timepoint to summarize raw counts
     """
     if input_csv is None:
-        df_input = pd.read_csv('output/%s/PAMDA_1_raw_counts.csv.gz' % run_name)
+        df_input = pd.read_csv('output/%s/PAMDA_1_raw_counts.csv' % run_name)
     else:
         df_input = pd.read_csv(input_csv)
 
@@ -1053,6 +1062,7 @@ def library_QC(RUN_NAME,
                 TIMEPOINT_CSV,
                 CONTROL_FASTQ_DIR,
                 CONTROL_FASTQ,
+                CONTROL_SAMPLE,
                 PAM_ORIENTATION,
                 PAM_LENGTH,
                 PAM_START,
@@ -1079,6 +1089,7 @@ def library_QC(RUN_NAME,
                         TIMEPOINT_CSV,
                         CONTROL_FASTQ_DIR,
                         CONTROL_FASTQ,
+                        CONTROL_SAMPLE,
                         PAM_ORIENTATION,
                         PAM_LENGTH,
                         PAM_START,
@@ -1153,6 +1164,7 @@ def control_fastq2count(run_name,
                         timepoint_csv,
                         fastq_dir,
                         control_fastq,
+                        control_sample,
                         pam_orientation,
                         pam_length,
                         pam_start,
@@ -1165,13 +1177,14 @@ def control_fastq2count(run_name,
     just runs fastq2count with a single sample and a single timepoint
     """
     
-    sample_fastq = {control_fastq: control_fastq}
+    sample_fastq = {control_fastq: control_sample}
     
     fastq2count(run_name, 
                 timepoint_csv,
                 fastq_dir,
                 sample_fastq, 
-                pam_orientation, 
+                pam_orientation,
+                timepoints=[0, 1], # fake timepoints
                 max_pam_len = max_pam_len, 
                 spacers = spacers,
                 P5_timepoint_BC_start = P5_sample_BC_start,
@@ -1187,7 +1200,7 @@ def rawcount2PAMcount(run_name,
     generate QC plots
     """
     
-    df_input = pd.read_csv('output/%s/PAMDA_1_raw_counts.csv.gz' % (run_name))
+    df_input = pd.read_csv('output/%s/PAMDA_1_raw_counts.csv' % (run_name))
     
     # generate counts for the PAMs defined by indicated start position and PAM length
     print('grouping counts by indicated PAM bases')

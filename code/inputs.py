@@ -1,8 +1,8 @@
 # REQUIRED ARGUMENTS
 RUN_NAME = 'example_PAMDA_data'
-BARCODE_CSV = 'barcode_csv/example_PAMDA_barcodes.csv'
+TIMEPOINT_CSV = 'barcode_csv/example_PAMDA_barcodes.csv'
 FASTQ_DIR = 'fastqs/example_PAMDA_data'
-TIMEPOINT_FASTQ = {
+SAMPLE_FASTQ = {
                    'expRW086_pool_10_S10': 0,
                    'expRW086_pool_11_S11': 1, 
                    'expRW086_pool_12_S12': 2
@@ -14,13 +14,13 @@ CONTROL_RAW_COUNT_CSV = 'output/example_PAM_library/PAMDA_1_raw_counts.csv.gz'
 CONTROL_SAMPLE = 'control_sample'
 
 # ADDITIONAL ARGUMENTS (with default values entered)
-CONTROL_SAMPLE_TIMEPOINT_FASTQ = None
+CONTROL_SAMPLE_SAMPLE_FASTQ = None
 TIMEPOINTS = [0, 60, 480, 1920]
 MAX_PAM_LENGTH = 8
 SPACERS = {'SPACER1':'GGGCACGGGCAGCTTGCCGG', 
            'SPACER2':'GTCGCCCTCGAACTTCACCT'}
-P5_SAMPLE_BARCODE_START = 2
-P7_SAMPLE_BARCODE_START = 2
+P5_TIMEPOINT_BARCODE_START = 2
+P7_TIMEPOINT_BARCODE_START = 2
 USE_TIMEPOINTS = None
 TOP_N_NORMALIZE = 5
 INIT_RATE_EST = [0.0001, 0.001, 0.01]
@@ -52,12 +52,12 @@ Argument definitions:
 |unique_sample_id_03|SpRY       |CTAC             |ACCG             |
 
 Barcodes should be provided 5' to 3' as they appear in the primer sequences that encode them. Avoid the use of special characters.
-
+P7_SAMPLE_BARCODE_START
 `FASTQ_DIR`: Folder directory contianing all fastq files.
 
-`TIMEPOINT_FASTQ`: A Python dictionary to indicate the timepoint of each set of fastq files. The fastq determines the timepoint (except for the untreated library control). Indexing of timepoints must start at zero (first timepoint = 0, second timepoint = 1, etc.). Timepoint fastq names must be abbreviated as demonstrated in the following example: 
+`SAMPLE_FASTQ`: A Python dictionary to indicate the timepoint of each set of fastq files. The fastq determines the timepoint (except for the untreated library control). Indexing of timepoints must start at zero (first timepoint = 0, second timepoint = 1, etc.). Timepoint fastq names must be abbreviated as demonstrated in the following example: 
 
-|fastq complete file names	        |key in TIMEPOINT_FASTQ dictionary|timepoint value|
+|fastq complete file names	        |key in SAMPLE_FASTQ dictionary|timepoint value|
 |:----------------------------------|:-------------------------------:|:-------------:|
 |timepoint1_S1_L001_R1_001.fastq.gz |timepoint1_S1                    |0              |
 |timepoint1_S1_L001_R2_001.fastq.gz |                                 |               |
@@ -86,7 +86,7 @@ Barcodes should be provided 5' to 3' as they appear in the primer sequences that
 |timepoint3_S3_L004_R1_001.fastq.gz |                                 |               |
 |timepoint3_S3_L004_R2_001.fastq.gz |                                 |               |
 
-Here, `TIMEPOINT_FASTQ` = `{ 'timepoint1_S1': 0, 'timepoint2_S2': 1, 'timepoint3_S3': 2 }`
+Here, `SAMPLE_FASTQ` = `{ 'timepoint1_S1': 0, 'timepoint2_S2': 1, 'timepoint3_S3': 2 }`
 
 `PAM_ORIENTATION`: Orientation of the PAM relative to the spacer (`three_prime` (Cas9) or `five_prime` (Cas12)). 
 
@@ -122,11 +122,11 @@ Examples:
 |4         |0        |TTTA        |
 |4         |1        |CTTT        |
 
-`CONTROL_RAW_COUNT_CSV`: Filepath to the "PAMDA_1_raw_counts_csv.gz" output from the randomized PAM library quality control analysis. If the quality control analysis was not performed and the untreated PAM library control sample is instead pooled with unique sample barcodes in one of the timepoint fastqs, set `CONTROL_RAW_COUNT_CSV` = `None` and instead indicate the timepoint fastq containing the control sample in the `CONTROL_SAMPLE_TIMEPOINT_FASTQ` parameter.
+`CONTROL_RAW_COUNT_CSV`: Filepath to the "PAMDA_1_raw_counts_csv.gz" output from the randomized PAM library quality control analysis. If the quality control analysis was not performed and the untreated PAM library control sample is instead pooled with unique sample barcodes in one of the timepoint fastqs, set `CONTROL_RAW_COUNT_CSV` = `None` and instead indicate the timepoint fastq containing the control sample in the `CONTROL_SAMPLE_SAMPLE_FASTQ` parameter.
 
 `CONTROL_SAMPLE`: Unique sample ID of the untreated randomized PAM library control sample.
 
-`CONTROL_SAMPLE_TIMEPOINT_FASTQ`: Integer index of the timepoint fastq that contains the control sample. If the quality control analysis was not performed and the untreated PAM library control sample is instead pooled with unique sample barcodes in one of the timepoint fastqs, set `CONTROL_RAW_COUNT_CSV` = `None` and instead indicate the timepoint fastq containing the control sample in the `CONTROL_SAMPLE_TIMEPOINT_FASTQ` parameter. If the control were pooled in the timepoint 3 fastq, then the value of `CONTROL_SAMPLE_TIMEPOINT_FASTQ` would be `3`.
+`CONTROL_SAMPLE_SAMPLE_FASTQ`: Integer index of the timepoint fastq that contains the control sample. If the quality control analysis was not performed and the untreated PAM library control sample is instead pooled with unique sample barcodes in one of the timepoint fastqs, set `CONTROL_RAW_COUNT_CSV` = `None` and instead indicate the timepoint fastq containing the control sample in the `CONTROL_SAMPLE_SAMPLE_FASTQ` parameter. If the control were pooled in the timepoint 3 fastq, then the value of `CONTROL_SAMPLE_SAMPLE_FASTQ` would be `3`.
 
 `TIMEPOINTS`: List of integer timepoints used, including the zeroth timepoint. Use a consistent unit. Default is `[0, 60, 480, 1920]` (seconds).
 
