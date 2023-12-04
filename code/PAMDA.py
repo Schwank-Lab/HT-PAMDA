@@ -271,10 +271,6 @@ def fastq2count(run_name,
 
     """
     # check inputs
-    try:
-        timepoint_ids = pd.read_csv(timepoint_csv)
-    except:
-        raise Exception('TIMEPOINT_CSV "%s" not found' % timepoint_csv)
     fastqs = glob.glob(fastq_dir + '/**/*R1*.fastq.gz', recursive=True)
     if len(fastqs) == 0:
         raise Exception('no fastq files found')
@@ -282,19 +278,31 @@ def fastq2count(run_name,
     if pam_orientation not in ['three_prime', 'five_prime']:
         raise Exception("please enter 'three_prime' or 'five_prime' for PAM_ORIENTATION")
 
-    P5_timepoint_BCs = timepoint_ids['P5_timepoint_barcode'].tolist()
-    P5_timepoint_BC_len = len(P5_timepoint_BCs[0])
-    P7_timepoint_BCs = timepoint_ids['P7_timepoint_barcode'].tolist()
-    P7_timepoint_BC_len = len(P5_timepoint_BCs[0])
+    if timepoint_csv is not None:
+        try:
+            timepoint_ids = pd.read_csv(timepoint_csv)
+        except:
+            raise Exception('TIMEPOINT_CSV "%s" not found' % timepoint_csv)
+        P5_timepoint_BCs = timepoint_ids['P5_timepoint_barcode'].tolist()
+        P5_timepoint_BC_len = len(P5_timepoint_BCs[0])
+        P7_timepoint_BCs = timepoint_ids['P7_timepoint_barcode'].tolist()
+        P7_timepoint_BC_len = len(P5_timepoint_BCs[0])
+        timepoint_dict = {}
+        for index, row in timepoint_ids.iterrows():
+            timepoint_dict[row['P7_timepoint_barcode']] = row['timepoint']
+        print(timepoint_dict)
+    else:
+        print('Not using timepoints')
+        timepoint_dict = {0: 0}
+        P5_timepoint_BC_len = 0
+        P7_timepoint_BC_len = 0
+        P5_timepoint_BCs = []
+        P7_timepoint_BCs = []
     nt_complement = dict({'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'N': 'N', '_': '_', '-': '-'})
-
+    
     nucleotides = ['A', 'T', 'C', 'G']
     total_pam_space = [''.join(p) for p in itertools.product(nucleotides, repeat=max_pam_len)]
 
-    timepoint_dict = {}
-    for index, row in timepoint_ids.iterrows():
-        timepoint_dict[row['P7_timepoint_barcode']] = row['timepoint']
-    print(timepoint_dict)
     store_all_data = {}
     norm_counts_scale = {}
 
@@ -352,33 +360,40 @@ def fastq2count(run_name,
                 wrong_spacer += 1
                 continue
             unknown_tp = 0
-            if P7_timepoint_BC in P7_timepoint_BCs:
+            # print(P7_timepoint_BC, P5_timepoints_BC)
+            if timepoint_csv is None: 
+                barcode_pair = 0
+            elif P7_timepoint_BC in P7_timepoint_BCs:
                 barcode_pair =  P7_timepoint_BC
-                if barcode_pair in timepoint_dict.keys():
-                    if pam_orientation == 'three_prime':
-                        spacer3p = spacer_loc + len(spacers[spacer])
-                        PAM = top_read[spacer3p: spacer3p + max_pam_len]
-                        try:
-                            tp = timepoint_dict[barcode_pair]
-                            store_all_data[sample][spacer][PAM][tp] += 1
-                            counted_reads += 1
-                        except:
-                            unknown_tp += 1  
-                    elif pam_orientation == 'five_prime':
-                        PAM = top_read[spacer_loc - max_pam_len: spacer_loc]
-                        try:
-                            tp = timepoint_dict[barcode_pair]
-                            store_all_data[sample][spacer][PAM][tp] += 1
-                            counted_reads += 1
-                        except:
-                            unknown_tp += 1 
-                    else:
-                        raise ValueError('Uknown PAM orientation')
-                else:
-                    wrong_barcode += 1
+            elif P5_timepoints_BC in P5_timepoint_BCs:
+                barcode_pair = P5_timepoints_BC
             else:
                 wrong_barcode += 1
+                continue
 
+            if barcode_pair in timepoint_dict.keys():
+                if pam_orientation == 'three_prime':
+                    spacer3p = spacer_loc + len(spacers[spacer])
+                    PAM = top_read[spacer3p: spacer3p + max_pam_len]
+                    try:
+                        tp = timepoint_dict[barcode_pair]
+                        store_all_data[sample][spacer][PAM][tp] += 1
+                        counted_reads += 1
+                    except:
+                        unknown_tp += 1  
+                elif pam_orientation == 'five_prime':
+                    PAM = top_read[spacer_loc - max_pam_len: spacer_loc]
+                    try:
+                        tp = timepoint_dict[barcode_pair]
+                        store_all_data[sample][spacer][PAM][tp] += 1
+                        counted_reads += 1
+                    except:
+                        unknown_tp += 1 
+                else:
+                    raise ValueError('Uknown PAM orientation')
+            else:
+                wrong_barcode += 1
+        
             pbar2.update()
 
         pbar2.reset()
@@ -652,7 +667,7 @@ def normcount2rate(run_name,
 
     print('appending rate constants')
 
-    min_k = min([100 if ((isinstance(x, float) and x <= 0) or x == 'NaN') else x for x in ks])
+    min_k = min([100 if ((isinstance(x, float) and x <= 0) or x == 'NaN') else x for x in ks]) if len(ks) > 0 else 'NaN'
 
     df['Rate_Constant_k'] = [x if ((isinstance(x, float) and x > 0) or x == 'NaN') else min_k for x in ks]
 
@@ -820,7 +835,7 @@ def rate2heatmap(run_name,
             cbar_label = 'rate'
 
         # heatmap plotting
-        axes = [4 * (pam_length - split_pam_index), 4 * (split_pam_index)]
+        axes = [12 * (pam_length - split_pam_index), 12 * (split_pam_index)]
         fig, ax1 = plt.subplots(1, figsize=(axes[0], axes[1]))
         sns.heatmap(df_output,
                     ax=ax1,
@@ -831,12 +846,14 @@ def rate2heatmap(run_name,
                     cbar=True,
                     cbar_kws={'shrink': axes[1] / axes[0] / 2,
                               'label': cbar_label,
-                              'aspect': 8},
+                              'aspect': 8,},
                     linewidth=0.2,
                     linecolor="White",
                     xticklabels=False,
                     yticklabels=False)
         heatmap_size = fig.get_size_inches()
+        cbar = ax1.collections[0].colorbar
+
 
         # format the axis labels
 
@@ -847,7 +864,7 @@ def rate2heatmap(run_name,
         scaling_dict = {2: {1: [1, 3.5, 4, 1.07]},
                         3: {1: [1, 1.7, 1, 2.15], 2: [1, 2, 4, 3.53]},
                         4: {1: [1, 0.7, 0.3, 5.5], 2: [1, 1.7, 1, 4.3], 3: [1, 1, 4, 14.1]},
-                        5: {1: [1, 0.25, 0.08, 17], 2: [1, 0.6, 0.3, 11.5],
+                        5: {1: [1, 0.25, 0.08, 17], 2: [1, 3, 0.3, 11.5],
                             3: [1, 1, 1, 14.15], 4: [1, 0.3, 3, 56.5]}}
         x_text = [[columns[n][m] for n in range(len(columns))] for m in range(len(columns[0]))]
         x_text = x_text[::-1]
@@ -863,8 +880,8 @@ def rate2heatmap(run_name,
                            cellLoc='center', loc='left')
         for key, cell in ytable.get_celld().items():
             cell.set_linewidth(0)
-        xtable.set_fontsize(8)
-        ytable.set_fontsize(8)
+        xtable.set_fontsize(12)
+        ytable.set_fontsize(12)
         xtable.scale(scaling_dict[pam_length][split_pam_index][0],
                      scaling_dict[pam_length][split_pam_index][1])
         ytable.scale(scaling_dict[pam_length][split_pam_index][2],
@@ -1059,7 +1076,6 @@ def raw_count_summary(run_name, input_csv=None):
                      run_name)
 
 def library_QC(RUN_NAME, 
-                TIMEPOINT_CSV,
                 CONTROL_FASTQ_DIR,
                 CONTROL_FASTQ,
                 CONTROL_SAMPLE,
@@ -1074,7 +1090,6 @@ def library_QC(RUN_NAME,
     print('Begin library QC')
 
     library_QC_check_inputs(RUN_NAME, 
-                            TIMEPOINT_CSV,
                             CONTROL_FASTQ_DIR,
                             CONTROL_FASTQ,
                             PAM_ORIENTATION,
@@ -1086,7 +1101,6 @@ def library_QC(RUN_NAME,
                             P7_TIMEPOINT_BARCODE_START)
     
     control_fastq2count(RUN_NAME, 
-                        TIMEPOINT_CSV,
                         CONTROL_FASTQ_DIR,
                         CONTROL_FASTQ,
                         CONTROL_SAMPLE,
@@ -1108,7 +1122,6 @@ def library_QC(RUN_NAME,
 
 
 def library_QC_check_inputs(RUN_NAME,
-                           CONTROL_TIMEPOINT_CSV,
                            CONTROL_FASTQ_DIR,
                            CONTROL_FASTQ,
                            PAM_ORIENTATION,
@@ -1121,8 +1134,6 @@ def library_QC_check_inputs(RUN_NAME,
     """
     perform some checks for input parameters
     """
-    if not os.path.exists(CONTROL_TIMEPOINT_CSV):
-        raise Exception('CONTROL_TIMEPOINT_CSV "%s" not found' % CONTROL_TIMEPOINT_CSV)
     if not os.path.exists(CONTROL_FASTQ_DIR):
         raise Exception('CONTROL_FASTQ_DIR "%s" not found' % CONTROL_FASTQ_DIR)
     fastqs = glob.glob(CONTROL_FASTQ_DIR +'/**/*R1*.fastq.gz', recursive = True)
@@ -1161,7 +1172,6 @@ def library_QC_check_inputs(RUN_NAME,
 
 
 def control_fastq2count(run_name, 
-                        timepoint_csv,
                         fastq_dir,
                         control_fastq,
                         control_sample,
@@ -1180,7 +1190,7 @@ def control_fastq2count(run_name,
     sample_fastq = {control_fastq: control_sample}
     
     fastq2count(run_name, 
-                timepoint_csv,
+                None,
                 fastq_dir,
                 sample_fastq, 
                 pam_orientation,
