@@ -3,6 +3,7 @@ import gzip
 import itertools
 import os
 import sys
+import copy
 import warnings
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,6 +14,7 @@ from scipy.stats import linregress
 from scipy.stats import pearsonr
 from scipy.stats import skew
 from tqdm.notebook import tqdm
+from concurrent.futures import ProcessPoolExecutor
 
 
 def check_inputs(RUN_NAME,
@@ -255,6 +257,100 @@ def PAMDA_complete(RUN_NAME,
 
 #-----------------------------------------------------------------------------------------------------------------------------#
 
+def fastq2count_single(fastq, fastq_to_sample_dict, pam_orientation, timepoints, max_pam_len, spacers, 
+                       P5_timepoint_BC_start, P5_timepoint_BC_len, P5_timepoint_BCs, 
+                       P7_timepoint_BC_start, P7_timepoint_BC_len, P7_timepoint_BCs):
+    count_data = {}
+    fastqR1 = fastq
+    fastqR2 = fastq.replace('R1', 'R2')
+    fastq_name = fastqR1.split('/')[-1]
+    fastq_name = fastq_name.split('_L00')[0]
+
+    try:
+        sample = fastq_to_sample_dict[fastq_name]
+    except:
+        print(f'Ignoreing {fastq_name}, sample unknown')
+        return None, None
+
+    if fastqR1.endswith('.gz'):
+        infileR1 = gzip.open(fastqR1, 'rt')
+        infileR2 = gzip.open(fastqR2, 'rt')
+    else:
+        infileR1 = open(fastqR1, 'r')
+        infileR2 = open(fastqR2, 'r')
+
+    wrong_barcode = 0
+    wrong_spacer = 0
+    total_reads = 0
+    counted_reads = 0
+    level1 = 0
+    level2 = 0
+    level1rc = 0
+    level2rc = 0
+    while infileR1.readline() and infileR2.readline():
+        read_sequenceR1 = infileR1.readline().strip()
+        infileR1.readline()
+        infileR1.readline()
+        read_sequenceR2 = infileR2.readline().strip()
+        infileR2.readline()
+        infileR2.readline()
+
+        total_reads += 1
+        
+        top_read, _, spacer, spacer_loc, P5_timepoints_BC, P7_timepoint_BC = \
+            find_BCs_and_spacer(spacers, read_sequenceR1, read_sequenceR2,
+                                P5_timepoint_BC_start, P5_timepoint_BC_len,
+                                P7_timepoint_BC_start, P7_timepoint_BC_len)
+
+        if spacer_loc == -1:
+            wrong_spacer += 1
+            continue
+        unknown_tp = 0
+        # print(P7_timepoint_BC, P5_timepoints_BC)
+        if P5_timepoint_BCs is []: 
+            barcode_pair = 0
+        elif P7_timepoint_BC in P7_timepoint_BCs:
+            barcode_pair =  P7_timepoint_BC
+        elif P5_timepoints_BC in P5_timepoint_BCs:
+            barcode_pair = P5_timepoints_BC
+        else:
+            wrong_barcode += 1
+            continue
+
+        if spacer not in count_data:
+            nucleotides = ['A', 'T', 'C', 'G']
+            total_pam_space = [''.join(p) for p in itertools.product(nucleotides, repeat=max_pam_len)]
+            empty_spacer_dict = {x: [0] * (len(timepoints)-1) for x in total_pam_space}
+            count_data[spacer] = empty_spacer_dict 
+        if barcode_pair in timepoint_dict.keys():
+            if pam_orientation == 'three_prime':
+                spacer3p = spacer_loc + len(spacers[spacer])
+                PAM = top_read[spacer3p: spacer3p + max_pam_len]
+                try:
+                    tp = timepoint_dict[barcode_pair]
+                    count_data[spacer][PAM][tp] += 1
+                    counted_reads += 1
+                except:
+                    unknown_tp += 1  
+            elif pam_orientation == 'five_prime':
+                PAM = top_read[spacer_loc - max_pam_len: spacer_loc]
+                try:
+                    tp = timepoint_dict[barcode_pair]
+                    count_data[spacer][PAM][tp] += 1
+                    counted_reads += 1
+                except:
+                    unknown_tp += 1 
+            else:
+                raise ValueError('Uknown PAM orientation')
+        else:
+            wrong_barcode += 1
+
+    write_out = (f"{round(float(counted_reads) / float(total_reads) * 100, 2)}% of reads mapped from {fastq_name} ({counted_reads} reads)\n" 
+                 f"Total Reads: {total_reads}, Wrong Spacer: {wrong_spacer}, Wrong Barcode: {wrong_barcode}, Unknown Timeppoint: {unknown_tp}")
+    tqdm.write(write_out, file=sys.stdout)
+
+    return sample, count_data
+
 def fastq2count(run_name,
                 timepoint_csv,
                 fastq_dir,
@@ -299,115 +395,31 @@ def fastq2count(run_name,
         P5_timepoint_BCs = []
         P7_timepoint_BCs = []
     nt_complement = dict({'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'N': 'N', '_': '_', '-': '-'})
-    
-    nucleotides = ['A', 'T', 'C', 'G']
-    total_pam_space = [''.join(p) for p in itertools.product(nucleotides, repeat=max_pam_len)]
 
     store_all_data = {}
-    norm_counts_scale = {}
+    n_samples = len(fastqs)
 
-    for sample in set(sample_fastq.values()):
-        store_all_data[sample] = {spacer: {x: [0] * (len(timepoints)-1) for x in total_pam_space}
-                                  for spacer in spacers}
-
-    pbar1 = tqdm(desc='fastq files: ', total=len(fastqs))
-    pbar2 = tqdm(desc='reads: ')
-
-    for fastq in fastqs:
-
-        fastqR1 = fastq
-        fastqR2 = fastq.replace('R1', 'R2')
-        fastq_name = fastqR1.split('/')[-1]
-        fastq_name = fastq_name.split('_L00')[0]
-
-        try:
-            sample = sample_fastq[fastq_name]
-        except:
-            print(f'Ignoreing {fastq_name}, sample unknown')
-            continue
-
-        if fastqR1.endswith('.gz'):
-            infileR1 = gzip.open(fastqR1, 'rt')
-            infileR2 = gzip.open(fastqR2, 'rt')
-        else:
-            infileR1 = open(fastqR1, 'r')
-            infileR2 = open(fastqR2, 'r')
-
-        wrong_barcode = 0
-        wrong_spacer = 0
-        total_reads = 0
-        counted_reads = 0
-        level1 = 0
-        level2 = 0
-        level1rc = 0
-        level2rc = 0
-        while infileR1.readline() and infileR2.readline():
-            read_sequenceR1 = infileR1.readline().strip()
-            infileR1.readline()
-            infileR1.readline()
-            read_sequenceR2 = infileR2.readline().strip()
-            infileR2.readline()
-            infileR2.readline()
-
-            total_reads += 1
-            
-            top_read, bot_read, spacer, spacer_loc, P5_timepoints_BC, P7_timepoint_BC = \
-                find_BCs_and_spacer(spacers, read_sequenceR1, read_sequenceR2,
-                                    P5_timepoint_BC_start, P5_timepoint_BC_len,
-                                    P7_timepoint_BC_start, P7_timepoint_BC_len)
-
-            if spacer_loc == -1:
-                wrong_spacer += 1
-                continue
-            unknown_tp = 0
-            # print(P7_timepoint_BC, P5_timepoints_BC)
-            if timepoint_csv is None: 
-                barcode_pair = 0
-            elif P7_timepoint_BC in P7_timepoint_BCs:
-                barcode_pair =  P7_timepoint_BC
-            elif P5_timepoints_BC in P5_timepoint_BCs:
-                barcode_pair = P5_timepoints_BC
+    with ProcessPoolExecutor() as executor:
+        futures = executor.map(fastq2count_single, fastqs, 
+                               [sample_fastq]*n_samples, 
+                               [pam_orientation]*n_samples, 
+                               [timepoints]*n_samples, 
+                               [max_pam_len]*n_samples, 
+                               [spacers]*n_samples, 
+                               [P5_timepoint_BC_start]*n_samples,
+                               [P5_timepoint_BC_len]*n_samples, 
+                               [P5_timepoint_BCs]*n_samples, 
+                               [P7_timepoint_BC_start]*n_samples,
+                               [P7_timepoint_BC_len]*n_samples, 
+                               [P7_timepoint_BCs]*n_samples
+                        )
+        for sample, count_data in tqdm(futures, total=n_samples):
+            if sample in store_all_data.keys():
+                store_all_data[sample].update(count_data)
             else:
-                wrong_barcode += 1
-                continue
-
-            if barcode_pair in timepoint_dict.keys():
-                if pam_orientation == 'three_prime':
-                    spacer3p = spacer_loc + len(spacers[spacer])
-                    PAM = top_read[spacer3p: spacer3p + max_pam_len]
-                    try:
-                        tp = timepoint_dict[barcode_pair]
-                        store_all_data[sample][spacer][PAM][tp] += 1
-                        counted_reads += 1
-                    except:
-                        unknown_tp += 1  
-                elif pam_orientation == 'five_prime':
-                    PAM = top_read[spacer_loc - max_pam_len: spacer_loc]
-                    try:
-                        tp = timepoint_dict[barcode_pair]
-                        store_all_data[sample][spacer][PAM][tp] += 1
-                        counted_reads += 1
-                    except:
-                        unknown_tp += 1 
-                else:
-                    raise ValueError('Uknown PAM orientation')
-            else:
-                wrong_barcode += 1
-        
-            pbar2.update()
-
-        pbar2.reset()
-        pbar1.update()
-
-        write_out = str(round(float(counted_reads) / float(total_reads) * 100, 2)) \
-                    + '% of reads mapped from ' + str(fastq_name) + ' (' + str(counted_reads) + ' reads)'
-        tqdm.write(write_out, file=sys.stdout)
-
-    pbar1.close()
-    pbar2.close()
+                store_all_data[sample] = count_data
 
     # output raw count results as a csv
-    print(f'Total Reads: {total_reads}, Wrong Spacer: {wrong_spacer}, Wrong Barcode: {wrong_barcode}, Unknown Timeppoint: {unknown_tp}')
     print('writing compressed CSV output')
 
     if not os.path.exists('output/%s' % run_name):
@@ -863,7 +875,7 @@ def rate2heatmap(run_name,
         # dict structure: {pam_len:{split_index:[x_width,x_height,y_width,y_height]}}
         scaling_dict = {2: {1: [1, 3.5, 4, 1.07]},
                         3: {1: [1, 1.7, 1, 2.15], 2: [1, 2, 4, 3.53]},
-                        4: {1: [1, 0.7, 0.3, 5.5], 2: [1, 1.7, 1, 4.3], 3: [1, 1, 4, 14.1]},
+                        4: {1: [1, 0.7, 0.3, 5.5], 2: [1, 5.1, 1, 4.3], 3: [1, 1, 4, 14.1]},
                         5: {1: [1, 0.25, 0.08, 17], 2: [1, 3, 0.3, 11.5],
                             3: [1, 1, 1, 14.15], 4: [1, 0.3, 3, 56.5]}}
         x_text = [[columns[n][m] for n in range(len(columns))] for m in range(len(columns[0]))]
@@ -970,9 +982,15 @@ def rate2heatmap(run_name,
     pbar.close()
 
 def reverse_complement(seq):
-    nt_complement = dict({'A':'T','C':'G','G':'C','T':'A','N':'N','_':'_','-':'-'})
-    return "".join([nt_complement[c] for c in seq.upper()[-1::-1]])
-
+    nt_complement = {
+        'A': 'T', 'a': 'T',
+        'C': 'G', 'c': 'G',
+        'G': 'C', 'g': 'C',
+        'T': 'A', 't': 'A',
+        'N': 'N', 'n': 'N',
+        '_': '_', '-': '-'
+        }
+    return "".join(nt_complement[c] for c in reversed(seq.upper()))
 
 def find_BCs_and_spacer(spacers, read_sequenceR1, read_sequenceR2,
                         P5_sample_BC_start, P5_sample_BC_len,
@@ -1088,7 +1106,6 @@ def library_QC(RUN_NAME,
                 P7_TIMEPOINT_BARCODE_START = 2):
     
     print('Begin library QC')
-
     library_QC_check_inputs(RUN_NAME, 
                             CONTROL_FASTQ_DIR,
                             CONTROL_FASTQ,
