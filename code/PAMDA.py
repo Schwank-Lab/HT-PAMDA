@@ -415,7 +415,6 @@ def fastq2count(run_name,
                                [P7_timepoint_BCs]*n_samples
                         )
         for sample, count_data in tqdm(futures, total=n_samples):
-            print(sample, count_data)
             if sample in store_all_data.keys():
                 store_all_data[sample].update(count_data)
             else:
