@@ -258,7 +258,7 @@ def PAMDA_complete(RUN_NAME,
 #-----------------------------------------------------------------------------------------------------------------------------#
 
 def fastq2count_single(fastq, fastq_to_sample_dict, pam_orientation, timepoints, max_pam_len, spacers, 
-                       P5_timepoint_BC_start, P5_timepoint_BC_len, P5_timepoint_BCs, 
+                       timepoint_dict, P5_timepoint_BC_start, P5_timepoint_BC_len, P5_timepoint_BCs, 
                        P7_timepoint_BC_start, P7_timepoint_BC_len, P7_timepoint_BCs):
     count_data = {}
     fastqR1 = fastq
@@ -307,7 +307,7 @@ def fastq2count_single(fastq, fastq_to_sample_dict, pam_orientation, timepoints,
             continue
         unknown_tp = 0
         # print(P7_timepoint_BC, P5_timepoints_BC)
-        if P5_timepoint_BCs is []: 
+        if len(P5_timepoint_BCs) == 0: 
             barcode_pair = 0
         elif P7_timepoint_BC in P7_timepoint_BCs:
             barcode_pair =  P7_timepoint_BC
@@ -406,6 +406,7 @@ def fastq2count(run_name,
                                [timepoints]*n_samples, 
                                [max_pam_len]*n_samples, 
                                [spacers]*n_samples, 
+                               [timepoint_dict]*n_samples, 
                                [P5_timepoint_BC_start]*n_samples,
                                [P5_timepoint_BC_len]*n_samples, 
                                [P5_timepoint_BCs]*n_samples, 
@@ -414,6 +415,7 @@ def fastq2count(run_name,
                                [P7_timepoint_BCs]*n_samples
                         )
         for sample, count_data in tqdm(futures, total=n_samples):
+            print(sample, count_data)
             if sample in store_all_data.keys():
                 store_all_data[sample].update(count_data)
             else:
@@ -1154,6 +1156,8 @@ def library_QC_check_inputs(RUN_NAME,
     if not os.path.exists(CONTROL_FASTQ_DIR):
         raise Exception('CONTROL_FASTQ_DIR "%s" not found' % CONTROL_FASTQ_DIR)
     fastqs = glob.glob(CONTROL_FASTQ_DIR +'/**/*R1*.fastq.gz', recursive = True)
+    print(os.getcwd())
+    print(fastqs)
     if len(fastqs)==0:
         raise Exception('no fastq files found')
     fastq_names = []
