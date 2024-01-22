@@ -415,8 +415,18 @@ def fastq2count(run_name,
                                [P7_timepoint_BCs]*n_samples
                         )
         for sample, count_data in tqdm(futures, total=n_samples):
-            if sample in store_all_data.keys():
-                store_all_data[sample].update(count_data)
+            if sample is None:
+                continue
+            elif sample in store_all_data.keys():
+                all_data = store_all_data[sample]    
+                # TODO: there's a better way to do it, one file should have one spacer
+                for spacer in count_data:
+                    if spacer not in all_data.keys():
+                        all_data[spacer] = count_data[spacer]
+                    else:
+                        for pam in count_data[spacer]:
+                            for tp, count in enumerate(count_data[spacer][pam]):
+                                all_data[spacer][pam][tp] += count
             else:
                 store_all_data[sample] = count_data
 
