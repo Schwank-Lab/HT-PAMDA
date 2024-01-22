@@ -867,7 +867,8 @@ def rate2heatmap(run_name,
                     yticklabels=False)
         heatmap_size = fig.get_size_inches()
         cbar = ax1.collections[0].colorbar
-
+        cbar.ax.yaxis.label.set_size(28)  # Adjust the size as needed
+        cbar.ax.yaxis.set_tick_params(labelsize=28)  # Adjust tick label size
 
         # format the axis labels
 
@@ -894,8 +895,8 @@ def rate2heatmap(run_name,
                            cellLoc='center', loc='left')
         for key, cell in ytable.get_celld().items():
             cell.set_linewidth(0)
-        xtable.set_fontsize(12)
-        ytable.set_fontsize(12)
+        xtable.set_fontsize(32)
+        ytable.set_fontsize(32)
         xtable.scale(scaling_dict[pam_length][split_pam_index][0],
                      scaling_dict[pam_length][split_pam_index][1])
         ytable.scale(scaling_dict[pam_length][split_pam_index][2],
