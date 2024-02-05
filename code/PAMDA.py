@@ -15,6 +15,7 @@ from scipy.stats import pearsonr
 from scipy.stats import skew
 from tqdm.notebook import tqdm
 from concurrent.futures import ProcessPoolExecutor
+import traceback
 
 
 def check_inputs(RUN_NAME,
@@ -260,96 +261,102 @@ def PAMDA_complete(RUN_NAME,
 def fastq2count_single(fastq, fastq_to_sample_dict, pam_orientation, timepoints, max_pam_len, spacers, 
                        timepoint_dict, P5_timepoint_BC_start, P5_timepoint_BC_len, P5_timepoint_BCs, 
                        P7_timepoint_BC_start, P7_timepoint_BC_len, P7_timepoint_BCs):
-    count_data = {}
-    fastqR1 = fastq
-    fastqR2 = fastq.replace('R1', 'R2')
-    fastq_name = fastqR1.split('/')[-1]
-    fastq_name = fastq_name.split('_L00')[0]
-
-    try:
+    print(os.getcwd())
+    try: 
+        count_data = {}
+        fastqR1 = fastq
+        fastqR2 = fastq.replace('R1', 'R2')
+        fastq_name = fastqR1.split('/')[-1]
+        fastq_name = fastq_name.split('_L00')[0]
+    
+        if fastq_name not in fastq_to_sample_dict.keys():
+            print(f'Ignoring {fastq_name}, sample unknown\n')
+            return None, None
         sample = fastq_to_sample_dict[fastq_name]
-    except:
-        print(f'Ignoreing {fastq_name}, sample unknown')
-        return None, None
-
-    if fastqR1.endswith('.gz'):
-        infileR1 = gzip.open(fastqR1, 'rt')
-        infileR2 = gzip.open(fastqR2, 'rt')
-    else:
-        infileR1 = open(fastqR1, 'r')
-        infileR2 = open(fastqR2, 'r')
-
-    wrong_barcode = 0
-    wrong_spacer = 0
-    total_reads = 0
-    counted_reads = 0
-    level1 = 0
-    level2 = 0
-    level1rc = 0
-    level2rc = 0
-    while infileR1.readline() and infileR2.readline():
-        read_sequenceR1 = infileR1.readline().strip()
-        infileR1.readline()
-        infileR1.readline()
-        read_sequenceR2 = infileR2.readline().strip()
-        infileR2.readline()
-        infileR2.readline()
-
-        total_reads += 1
         
-        top_read, _, spacer, spacer_loc, P5_timepoints_BC, P7_timepoint_BC = \
-            find_BCs_and_spacer(spacers, read_sequenceR1, read_sequenceR2,
-                                P5_timepoint_BC_start, P5_timepoint_BC_len,
-                                P7_timepoint_BC_start, P7_timepoint_BC_len)
-
-        if spacer_loc == -1:
-            wrong_spacer += 1
-            continue
+        if fastqR1.endswith('.gz'):
+            infileR1 = gzip.open(fastqR1, 'rt')
+            infileR2 = gzip.open(fastqR2, 'rt')
+        else:
+            infileR1 = open(fastqR1, 'r')
+            infileR2 = open(fastqR2, 'r')
+    
+        wrong_barcode = 0
+        wrong_spacer = 0
+        total_reads = 0
+        counted_reads = 0
         unknown_tp = 0
-        # print(P7_timepoint_BC, P5_timepoints_BC)
-        if len(P5_timepoint_BCs) == 0: 
-            barcode_pair = 0
-        elif P7_timepoint_BC in P7_timepoint_BCs:
-            barcode_pair =  P7_timepoint_BC
-        elif P5_timepoints_BC in P5_timepoint_BCs:
-            barcode_pair = P5_timepoints_BC
-        else:
-            wrong_barcode += 1
-            continue
-
-        if spacer not in count_data:
-            nucleotides = ['A', 'T', 'C', 'G']
-            total_pam_space = [''.join(p) for p in itertools.product(nucleotides, repeat=max_pam_len)]
-            empty_spacer_dict = {x: [0] * (len(timepoints)-1) for x in total_pam_space}
-            count_data[spacer] = empty_spacer_dict 
-        if barcode_pair in timepoint_dict.keys():
-            if pam_orientation == 'three_prime':
-                spacer3p = spacer_loc + len(spacers[spacer])
-                PAM = top_read[spacer3p: spacer3p + max_pam_len]
-                try:
-                    tp = timepoint_dict[barcode_pair]
-                    count_data[spacer][PAM][tp] += 1
-                    counted_reads += 1
-                except:
-                    unknown_tp += 1  
-            elif pam_orientation == 'five_prime':
-                PAM = top_read[spacer_loc - max_pam_len: spacer_loc]
-                try:
-                    tp = timepoint_dict[barcode_pair]
-                    count_data[spacer][PAM][tp] += 1
-                    counted_reads += 1
-                except:
-                    unknown_tp += 1 
+        level1 = 0
+        level2 = 0
+        level1rc = 0
+        level2rc = 0
+        while infileR1.readline() and infileR2.readline():
+            read_sequenceR1 = infileR1.readline().strip()
+            infileR1.readline()
+            infileR1.readline()
+            read_sequenceR2 = infileR2.readline().strip()
+            infileR2.readline()
+            infileR2.readline()
+    
+            total_reads += 1
+            
+            top_read, _, spacer, spacer_loc, P5_timepoints_BC, P7_timepoint_BC = \
+                find_BCs_and_spacer(spacers, read_sequenceR1, read_sequenceR2,
+                                    P5_timepoint_BC_start, P5_timepoint_BC_len,
+                                    P7_timepoint_BC_start, P7_timepoint_BC_len)
+    
+            if spacer_loc == -1:
+                wrong_spacer += 1
+                continue
+            # print(P7_timepoint_BC, P5_timepoints_BC)
+            if len(P5_timepoint_BCs) == 0: 
+                barcode_pair = 0
+            elif P7_timepoint_BC in P7_timepoint_BCs:
+                barcode_pair =  P7_timepoint_BC
+            elif P5_timepoints_BC in P5_timepoint_BCs:
+                barcode_pair = P5_timepoints_BC
             else:
-                raise ValueError('Uknown PAM orientation')
-        else:
-            wrong_barcode += 1
+                wrong_barcode += 1
+                continue
+    
+            if spacer not in count_data:
+                nucleotides = ['A', 'T', 'C', 'G']
+                total_pam_space = [''.join(p) for p in itertools.product(nucleotides, repeat=max_pam_len)]
+                empty_spacer_dict = {x: [0] * (len(timepoints)-1) for x in total_pam_space}
+                count_data[spacer] = empty_spacer_dict 
+            if barcode_pair in timepoint_dict.keys():
+                if pam_orientation == 'three_prime':
+                    spacer3p = spacer_loc + len(spacers[spacer])
+                    PAM = top_read[spacer3p: spacer3p + max_pam_len]
+                    try:
+                        tp = timepoint_dict[barcode_pair]
+                        count_data[spacer][PAM][tp] += 1
+                        counted_reads += 1
+                    except:
+                        unknown_tp += 1  
+                elif pam_orientation == 'five_prime':
+                    PAM = top_read[spacer_loc - max_pam_len: spacer_loc]
+                    try:
+                        tp = timepoint_dict[barcode_pair]
+                        count_data[spacer][PAM][tp] += 1
+                        counted_reads += 1
+                    except:
+                        unknown_tp += 1 
+                else:
+                    raise ValueError('Uknown PAM orientation')
+            else:
+                wrong_barcode += 1
+    
+        write_out = (f"{round(float(counted_reads) / float(total_reads) * 100, 2)}% of reads mapped from {fastq_name} ({counted_reads} reads)\n" 
+                     f"Total Reads: {total_reads}, Wrong Spacer: {wrong_spacer}, Wrong Barcode: {wrong_barcode}, Unknown Timeppoint: {unknown_tp}")
+        tqdm.write(write_out, file=sys.stdout)
+    
+        return sample, count_data
+    except Exception as ex:
+        print(f"Processing {fastq} generated an exception: {ex}")
+        traceback.print_exception(type(ex), ex, ex.__traceback__)
+        raise ex
 
-    write_out = (f"{round(float(counted_reads) / float(total_reads) * 100, 2)}% of reads mapped from {fastq_name} ({counted_reads} reads)\n" 
-                 f"Total Reads: {total_reads}, Wrong Spacer: {wrong_spacer}, Wrong Barcode: {wrong_barcode}, Unknown Timeppoint: {unknown_tp}")
-    tqdm.write(write_out, file=sys.stdout)
-
-    return sample, count_data
 
 def fastq2count(run_name,
                 timepoint_csv,
@@ -938,16 +945,18 @@ def rate2heatmap(run_name,
     pbar = tqdm(desc='samples: ', total=df_input['Sample'].nunique(),
                 file=sys.stdout)
     new_columns = []
+    print(df_input)
     for variant in df_input['Sample'].unique().tolist():
         for column in columns:
-            new_columns.append(str(column) + '-' + str(variant))
+            assert not ':' in variant, 'Sample name cannot contain ":" in its name'
+            new_columns.append(str(column) + ':' + str(variant))
         df_output = pd.DataFrame(columns=new_columns, index=indices)
 
         if avg_spacer:
             for row in df_output.index:
                 for column in df_output.columns:
-                    pam2 = str(column.split('-')[0].strip('\n'))
-                    sample = str(column.split('-')[1].strip('\n'))
+                    pam2 = str(column.split(':')[0].strip('\n'))
+                    sample = str(column.split(':')[1].strip('\n'))
                     rate_avg = 0
                     for spacer in sorted(spacers):
                         rate_avg += float(df_input['Rate_Constant_k'][(df_input['PAM_pt1'] == str(row)) &
@@ -971,12 +980,17 @@ def rate2heatmap(run_name,
             for spacer in sorted(spacers):
                 for row in df_output.index:
                     for column in df_output.columns:
-                        pam2 = str(column.split('-')[0].strip('\n'))
-                        sample = str(column.split('-')[1].strip('\n'))
-                        rate = float(df_input['Rate_Constant_k'][(df_input['PAM_pt1'] == str(row)) &
+                        pam2 = str(column.split(':')[0].strip('\n'))
+                        sample = str(column.split(':')[1].strip('\n'))
+                        rate = df_input['Rate_Constant_k'][(df_input['PAM_pt1'] == str(row)) &
                                                                  (df_input['PAM_pt2'] == pam2) &
                                                                  (df_input['Sample'] == sample) &
-                                                                 (df_input['Spacer'] == spacer)].tolist()[0])
+                                                                 (df_input['Spacer'] == spacer)]
+                        if rate.empty:
+                            print(f'Could not find rate value for {sample}, {spacer}')
+                            rate = 0.0
+                        else:
+                            rate = float(rate.tolist()[0])
                         if log_scale_heatmap:
                             df_output.loc[row, column] = np.log10(rate)
                         else:
